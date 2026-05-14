@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>OrganiHaat Reports</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f0;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1, h2 {
+      margin-bottom: 10px;
+    }
+
+    .card {
+      background: white;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 600px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 9px;
+      text-align: left;
+    }
+
+    th {
+      background: #111;
+      color: white;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .summary-box {
+      background: white;
+      padding: 18px;
+      border-radius: 10px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+    }
+
+    .summary-box strong {
+      display: block;
+      font-size: 24px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>OrganiHaat Reports</h1>
+
+  <div class="summary">
+    <div class="summary-box">
+      Total Orders
+      <strong id="totalOrders">0</strong>
+    </div>
+
+    <div class="summary-box">
+      Total Sales
+      <strong id="totalSales">৳0</strong>
+    </div>
+
+    <div class="summary-box">
+      Pending Delivery
+      <strong id="pendingDelivery">0</strong>
+    </div>
+
+    <div class="summary-box">
+      Pending Payment
+      <strong id="pendingPayment">0</strong>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Product-wise Sales</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Total Quantity</th>
+          <th>Total Sales</th>
+        </tr>
+      </thead>
+      <tbody id="productReport"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Customer Report</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th>Mobile</th>
+          <th>Total Orders</th>
+          <th>Total Purchase</th>
+        </tr>
+      </thead>
+      <tbody id="customerReport"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Pending Delivery</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Invoice No</th>
+          <th>Customer</th>
+          <th>Mobile</th>
+          <th>Total</th>
+          <th>Delivery Status</th>
+        </tr>
+      </thead>
+      <tbody id="pendingDeliveryReport"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Paid / Unpaid Summary</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Payment Status</th>
+          <th>Total Orders</th>
+          <th>Total Amount</th>
+        </tr>
+      </thead>
+      <tbody id="paymentReport"></tbody>
+    </table>
+  </div>
+
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbx1COxFgnc4nXM7Q-_lEU4JBLFe_qMCJBpemuHHQV1fL3Au3y0MRxYqFaI_PoCI-2v0/exec";
+
+function money(value) {
+  return "৳" + Number(value || 0).toFixed(2);
+}
+
+async function loadReports() {
+  const response = await fetch(API_URL + "?action=reports");
+  const result = await response.json();
+
+  if (result.status !== "success") {
+    alert("Report loading failed");
+    return;
+  }
+
+  const orders = result.orders || [];
+  const items = result.items || [];
+
+  document.getElementById("totalOrders").innerText = orders.length;
+
+  const totalSales = orders.reduce((sum, o) => sum + Number(o.grand_total || 0), 0);
+  document.getElementById("totalSales").innerText = money(totalSales);
+
+  const pendingDelivery = orders.filter(o => o.delivery_status === "Pending").length;
+  document.getElementById("pendingDelivery").innerText = pendingDelivery;
+
+  const pendingPayment = orders.filter(o => o.payment_status === "Pending").length;
+  document.getElementById("pendingPayment").innerText = pendingPayment;
+
+  productWiseReport(items);
+  customerReport(orders);
+  pendingDeliveryReport(orders);
+  paymentReport(orders);
+}
+
+function productWiseReport(items) {
+  let report = {};
+
+  items.forEach(item => {
+    const name = item.item_name;
+
+    if (!report[name]) {
+      report[name] = {
+        quantity: 0,
+        total: 0
+      };
+    }
+
+    report[name].quantity += Number(item.quantity || 0);
+    report[name].total += Number(item.total_price || 0);
+  });
+
+  document.getElementById("productReport").innerHTML =
+    Object.keys(report).map(name => `
+      <tr>
+        <td>${name}</td>
+        <td>${report[name].quantity}</td>
+        <td>${money(report[name].total)}</td>
+      </tr>
+    `).join("");
+}
+
+function customerReport(orders) {
+  let report = {};
+
+  orders.forEach(order => {
+    const key = order.mobile || order.customer_name;
+
+    if (!report[key]) {
+      report[key] = {
+        customer_name: order.customer_name,
+        mobile: order.mobile,
+        orders: 0,
+        total: 0
+      };
+    }
+
+    report[key].orders += 1;
+    report[key].total += Number(order.grand_total || 0);
+  });
+
+  document.getElementById("customerReport").innerHTML =
+    Object.keys(report).map(key => `
+      <tr>
+        <td>${report[key].customer_name}</td>
+        <td>${report[key].mobile}</td>
+        <td>${report[key].orders}</td>
+        <td>${money(report[key].total)}</td>
+      </tr>
+    `).join("");
+}
+
+function pendingDeliveryReport(orders) {
+  const pending = orders.filter(o => o.delivery_status === "Pending");
+
+  document.getElementById("pendingDeliveryReport").innerHTML =
+    pending.map(o => `
+      <tr>
+        <td>${o.invoice_no}</td>
+        <td>${o.customer_name}</td>
+        <td>${o.mobile}</td>
+        <td>${money(o.grand_total)}</td>
+        <td>${o.delivery_status}</td>
+      </tr>
+    `).join("");
+}
+
+function paymentReport(orders) {
+  let report = {};
+
+  orders.forEach(order => {
+    const status = order.payment_status || "Pending";
+
+    if (!report[status]) {
+      report[status] = {
+        orders: 0,
+        total: 0
+      };
+    }
+
+    report[status].orders += 1;
+    report[status].total += Number(order.grand_total || 0);
+  });
+
+  document.getElementById("paymentReport").innerHTML =
+    Object.keys(report).map(status => `
+      <tr>
+        <td>${status}</td>
+        <td>${report[status].orders}</td>
+        <td>${money(report[status].total)}</td>
+      </tr>
+    `).join("");
+}
+
+loadReports();
+</script>
+
+</body>
+</html>
